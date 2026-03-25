@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OliveBot — Oliveboard Performance Analyst</title>
+<meta name="description" content="AI-powered competitive exam performance analyst and study coach for Banking, SSC, MBA, and UPSC aspirants."/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0d10;--bg2:#11141a;--bg3:#181c24;--surface:#1e232e;--surface2:#262d3a;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.1);--border3:rgba(255,255,255,0.16);
+  --olive:#8db840;--olive-dim:rgba(141,184,64,0.13);--olive-glow:rgba(141,184,64,0.06);
+  --amber:#f0a840;--red:#e05252;--blue:#5b9bd5;--teal:#4ec9b0;--purple:#b07ce8;
+  --text:#e8ebf2;--text2:#9ea5b4;--text3:#5a6170;
+  --radius:14px;--radius-sm:10px;--transition:0.2s cubic-bezier(.4,0,.2,1);
+  --font:'DM Sans',system-ui,sans-serif;--font-serif:'DM Serif Display',Georgia,serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.6;overflow:hidden}
+
+/* ─── Layout ─── */
+.app{display:grid;grid-template-columns:310px 1fr;grid-template-rows:58px 1fr;height:100vh}
+
+/* ─── Topbar ─── */
+.topbar{
+  grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 24px;
+  background:linear-gradient(180deg,var(--bg2) 0%,var(--bg) 100%);
+  border-bottom:1px solid var(--border);z-index:10;
+  backdrop-filter:blur(12px);
+}
+.topbar-logo{font-family:var(--font-serif);font-size:22px;color:var(--olive);letter-spacing:-0.5px;display:flex;align-items:baseline;gap:8px}
+.topbar-logo span{color:var(--text3);font-family:var(--font);font-size:12px;font-weight:400;letter-spacing:0.3px}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.badge{font-size:11px;padding:4px 12px;border-radius:20px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase}
+.badge-olive{background:var(--olive-dim);color:var(--olive);border:1px solid rgba(141,184,64,0.22)}
+.badge-exam{background:rgba(91,155,213,0.1);color:var(--blue);border:1px solid rgba(91,155,213,0.18)}
+
+/* ─── Sidebar ─── */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-section{padding:18px 20px;border-bottom:1px solid var(--border)}
+.sidebar-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px}
+
+.student-card{display:flex;flex-direction:column;gap:5px}
+.student-name{font-family:var(--font-serif);font-size:18px;color:var(--text)}
+.student-exam{font-size:12px;color:var(--olive);font-weight:600}
+.student-meta{font-size:11px;color:var(--text3);display:flex;gap:8px}
+
+/* Upload */
+.upload-zone{
+  border:2px dashed var(--border2);border-radius:var(--radius-sm);padding:18px;
+  text-align:center;cursor:pointer;transition:var(--transition);position:relative;
+  background:var(--bg3);
+}
+.upload-zone:hover{border-color:var(--olive);background:var(--olive-glow)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-zone-icon{font-size:26px;margin-bottom:6px}
+.upload-zone-text{font-size:12px;color:var(--text2)}
+.upload-zone-text strong{color:var(--olive)}
+.upload-status{margin-top:10px;font-size:11px;color:var(--teal);display:none;font-weight:600}
+
+/* Mini stats */
+.mini-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mini-stat{background:var(--bg3);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border);transition:var(--transition)}
+.mini-stat:hover{border-color:var(--border2);transform:translateY(-1px)}
+.mini-stat-val{font-family:var(--font-serif);font-size:22px;color:var(--olive);line-height:1}
+.mini-stat-lbl{font-size:10px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:0.3px}
+.mini-stat-trend{font-size:10px;margin-top:3px}
+.trend-up{color:var(--teal)}.trend-dn{color:var(--red)}
+
+/* Sidebar chart */
+.chart-wrap{padding:0 2px}
+.chart-wrap canvas{max-height:120px}
+
+/* Quick prompts */
+.quick-prompts{display:flex;flex-direction:column;gap:7px;padding:16px 20px;border-bottom:1px solid var(--border)}
+.qp-btn{
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:9px 14px;font-size:12px;color:var(--text2);cursor:pointer;text-align:left;
+  transition:var(--transition);font-family:var(--font);display:flex;align-items:center;gap:8px;
+}
+.qp-btn:hover{background:var(--surface);border-color:var(--olive);color:var(--text);transform:translateX(3px)}
+.qp-icon{font-size:14px;flex-shrink:0}
+
+.sidebar-scroll{flex:1;overflow-y:auto}
+.sidebar-scroll::-webkit-scrollbar{width:3px}
+.sidebar-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+.disclaimer{padding:10px 20px;font-size:10px;color:var(--text3);border-top:1px solid var(--border);line-height:1.5}
+
+/* ─── Chat Area ─── */
+.chat-area{display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+
+.messages{flex:1;overflow-y:auto;padding:28px 32px;display:flex;flex-direction:column;gap:22px;scroll-behavior:smooth}
+.messages::-webkit-scrollbar{width:4px}
+.messages::-webkit-scrollbar-track{background:transparent}
+.messages::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+/* Messages */
+.msg{display:flex;gap:14px;max-width:860px;animation:fadeUp 0.3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.msg-avatar{
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;flex-shrink:0;margin-top:2px;
+}
+.msg-avatar.bot{background:var(--olive-dim);color:var(--olive);border:1px solid rgba(141,184,64,0.28);font-family:var(--font-serif);font-size:16px}
+.msg-avatar.user{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+
+.msg-body{flex:1;min-width:0}
+.msg-name{font-size:10px;color:var(--text3);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px}
+.msg-bubble{
+  background:var(--surface);border:1px solid var(--border);border-radius:4px 14px 14px 14px;
+  padding:16px 20px;font-size:14px;line-height:1.75;color:var(--text);
+  display:flex;flex-direction:column;gap:12px;min-width:0;
+}
+.msg.user .msg-bubble{background:var(--surface2);border-color:var(--border2);border-radius:14px 4px 14px 14px}
+.msg-bubble.rejection{border-color:rgba(224,82,82,0.25);background:rgba(224,82,82,0.04)}
+
+/* Markdown in bubble */
+.msg-bubble h2{font-family:var(--font-serif);font-size:17px;color:var(--olive);margin:16px 0 8px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.msg-bubble h2:first-child{margin-top:0}
+.msg-bubble h3{font-size:13px;font-weight:700;color:var(--text);margin:14px 0 6px;text-transform:uppercase;letter-spacing:0.5px}
+.msg-bubble h4{font-size:12px;font-weight:700;color:var(--text2);margin:12px 0 5px;text-transform:uppercase;letter-spacing:0.4px}
+.msg-bubble h5{font-size:11px;font-weight:700;color:var(--text3);margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.3px}
+.msg-bubble p{margin-bottom:10px}
+.msg-bubble p:last-child{margin-bottom:0}
+.msg-bubble ul,.msg-bubble ol{padding-left:20px;margin-bottom:10px}
+.msg-bubble li{margin-bottom:4px;color:var(--text2)}
+.msg-bubble li strong{color:var(--text)}
+.msg-bubble strong{color:var(--text);font-weight:600}
+.msg-bubble em{color:var(--olive);font-style:normal;font-weight:500}
+.msg-bubble code{background:var(--bg3);color:var(--teal);padding:2px 7px;border-radius:5px;font-size:12px;font-family:'SF Mono',monospace}
+
+/* Tables in bubble */
+.msg-bubble table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+.msg-bubble th{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--border2);background:var(--bg3)}
+.msg-bubble td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2)}
+.msg-bubble tr:last-child td{border-bottom:none}
+.msg-bubble td:first-child{color:var(--text);font-weight:500}
+
+/* Stat cards in messages */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:8px 0;width:100%}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;transition:var(--transition);min-width:0}
+.stat-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.stat-card-val{font-family:var(--font-serif);font-size:26px;line-height:1}
+.stat-card-val.green{color:var(--teal)}.stat-card-val.amber{color:var(--amber)}
+.stat-card-val.red{color:var(--red)}.stat-card-val.olive{color:var(--olive)}
+.stat-card-lbl{font-size:10px;color:var(--text3);margin-top:5px;text-transform:uppercase;letter-spacing:0.3px}
+
+/* Roadmap */
+.roadmap{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+.week-card{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--olive);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 16px;transition:var(--transition)}
+.week-card:hover{border-color:var(--border2);transform:translateX(2px)}
+.week-card.critical{border-left-color:var(--red)}.week-card.attention{border-left-color:var(--amber)}
+.week-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px}
+.week-focus{font-size:12px;color:var(--text2);margin-bottom:6px}
+.week-tags{display:flex;flex-wrap:wrap;gap:5px}
+.week-tag{background:var(--surface2);padding:3px 10px;border-radius:20px;font-size:10px;color:var(--text3);font-weight:500}
+
+/* Mock Recommendation Cards */
+.mock-rec-grid{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.mock-rec-card{
+  background:linear-gradient(135deg,var(--bg3) 0%,var(--surface) 100%);
+  border:1px solid var(--border);border-left:3px solid var(--olive);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  padding:14px 16px;cursor:pointer;transition:var(--transition);
+  flex:1 1 calc(50% - 10px);min-width:220px;
+}
+.mock-rec-card:hover{border-color:var(--olive);transform:translateX(3px);box-shadow:0 4px 16px rgba(141,184,64,0.15)}
+.mock-rec-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px}
+.mock-rec-meta{font-size:11px;color:var(--text2);margin-bottom:8px}
+.mock-rec-tags{display:flex;flex-wrap:wrap;gap:5px}
+.mock-rec-tag{background:var(--olive-dim);color:var(--olive);padding:2px 8px;border-radius:12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px}
+.mock-rec-tag.match{background:rgba(224,82,82,0.1);color:var(--red)}
+.mock-rec-badge{display:inline-block;background:var(--olive);color:#fff;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;margin-left:6px;vertical-align:middle}
+
+/* Inline charts */
+.inline-chart{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:14px 0}
+.inline-chart canvas{max-height:220px}
+.chart-title{font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px}
+
+/* Typing */
+.typing{display:flex;gap:5px;padding:6px 0}
+.typing span{width:7px;height:7px;border-radius:50%;background:var(--olive);opacity:0.3;animation:blink 1.4s infinite}
+.typing span:nth-child(2){animation-delay:0.2s}
+.typing span:nth-child(3){animation-delay:0.4s}
+@keyframes blink{0%,80%,100%{opacity:0.15}40%{opacity:1}}
+
+/* Welcome */
+.welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:18px;text-align:center;padding:48px}
+.welcome-icon{font-size:48px;filter:drop-shadow(0 4px 20px rgba(141,184,64,0.3))}
+.welcome-title{font-family:var(--font-serif);font-size:32px;color:var(--text);line-height:1.3}
+.welcome-title em{color:var(--olive);font-style:normal}
+.welcome-sub{font-size:14px;color:var(--text2);max-width:440px;line-height:1.8}
+.welcome-steps{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;justify-content:center}
+.welcome-step{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 18px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:10px;transition:var(--transition)}
+.welcome-step:hover{border-color:var(--olive);transform:translateY(-2px)}
+.welcome-step-num{width:22px;height:22px;border-radius:50%;background:var(--olive-dim);color:var(--olive);font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}
+
+/* Input */
+.input-area{padding:18px 24px;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:flex-end;gap:12px}
+.input-wrap{flex:1;position:relative}
+#chat-input{
+  width:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  color:var(--text);font-family:var(--font);font-size:14px;padding:12px 18px;resize:none;outline:none;
+  max-height:140px;min-height:46px;line-height:1.5;transition:border-color var(--transition);
+}
+#chat-input:focus{border-color:var(--olive);box-shadow:0 0 0 3px var(--olive-glow)}
+#chat-input::placeholder{color:var(--text3)}
+.send-btn{
+  width:46px;height:46px;flex-shrink:0;background:var(--olive);border:none;border-radius:12px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition);
+}
+.send-btn:hover{background:#9ecf4a;transform:translateY(-2px);box-shadow:0 4px 16px rgba(141,184,64,0.3)}
+.send-btn:disabled{background:var(--surface2);cursor:not-allowed;transform:none;box-shadow:none}
+
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}}
+.shake{animation:shake 0.3s ease}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-logo">OliveBot <span>by Oliveboard</span></div>
+    <div class="topbar-right">
+      <span class="badge badge-exam" id="exam-badge-text">No exam loaded</span>
+      <span class="badge badge-olive">AI Analyst</span>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Load Data</div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".json"/>
+        <div class="upload-zone-icon">📂</div>
+        <div class="upload-zone-text"><strong>Click to upload</strong> mock test JSON<br/>or drag & drop</div>
+        <div class="upload-status" id="upload-status">✓ Data loaded successfully</div>
+      </div>
+    </div>
+    <div class="sidebar-scroll">
+      <div class="sidebar-section" id="student-section" style="display:none">
+        <div class="sidebar-label">Student</div>
+        <div class="student-card">
+          <div class="student-name" id="s-name">—</div>
+          <div class="student-exam" id="s-exam">—</div>
+          <div class="student-meta"><span id="s-mocks">0 mocks</span><span>·</span><span id="s-days">— days left</span></div>
+        </div>
+      </div>
+      <div class="sidebar-section" id="stats-section" style="display:none">
+        <div class="sidebar-label">Performance Snapshot</div>
+        <div class="mini-stats">
+          <div class="mini-stat"><div class="mini-stat-val" id="avg-score">—</div><div class="mini-stat-lbl">Avg Score</div><div class="mini-stat-trend" id="score-trend"></div></div>
+          <div class="mini-stat"><div class="mini-stat-val" id="avg-pct">—</div><div class="mini-stat-lbl">Avg Percentile</div><div class="mini-stat-trend" id="pct-trend"></div></div>
+          <div class="mini-stat"><div class="mini-stat-val" id="best-score">—</div><div class="mini-stat-lbl">Best Score</div></div>
+          <div class="mini-stat"><div class="mini-stat-val" id="improvement">—</div><div class="mini-stat-lbl">Improvement</div></div>
+        </div>
+      </div>
+      <div class="sidebar-section" id="chart-section" style="display:none">
+        <div class="sidebar-label">Score Trend</div>
+        <div class="chart-wrap"><canvas id="sidebar-chart"></canvas></div>
+      </div>
+      <div class="quick-prompts" id="quick-prompts" style="display:none">
+        <div class="sidebar-label">Quick Analysis</div>
+        <button class="qp-btn" onclick="quickPrompt('Full analysis')"><span class="qp-icon">📊</span>Full analysis</button>
+        <button class="qp-btn" onclick="quickPrompt('My weak areas')"><span class="qp-icon">⚠️</span>Weak areas</button>
+        <button class="qp-btn" onclick="quickPrompt('Study roadmap')"><span class="qp-icon">🗺️</span>Study roadmap</button>
+        <button class="qp-btn" onclick="quickPrompt('Time audit')"><span class="qp-icon">⏱️</span>Time audit</button>
+        <button class="qp-btn" onclick="quickPrompt('How am I doing?')"><span class="qp-icon">🎯</span>Cutoff check</button>
+        <button class="qp-btn" onclick="quickPrompt('Compare mock 1 vs mock 10')"><span class="qp-icon">📈</span>Early vs recent</button>
+      </div>
+    </div>
+    <div class="disclaimer">OliveBot analyses your data using GPT-4o. Upload JSON with 3+ mock tests for best results.</div>
+  </aside>
+
+  <!-- Chat Area -->
+  <main class="chat-area">
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome-screen">
+        <div class="welcome-icon">🎯</div>
+        <div class="welcome-title">Your <em>personal</em> exam coach</div>
+        <div class="welcome-sub">Upload your mock test JSON and I'll analyse your performance, identify weak areas, and build a personalised roadmap to exam day.</div>
+        <div class="welcome-steps">
+          <div class="welcome-step"><div class="welcome-step-num">1</div>Upload mock test JSON</div>
+          <div class="welcome-step"><div class="welcome-step-num">2</div>Ask about your prep</div>
+          <div class="welcome-step"><div class="welcome-step-num">3</div>Get data-driven insights</div>
+        </div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-wrap">
+        <textarea id="chat-input" placeholder="Ask about your performance, weak areas, study plan…" rows="1"></textarea>
+      </div>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()" title="Send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </main>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// OliveBot — JavaScript Engine (OpenAI GPT-4o)
+// ══════════════════════════════════════════════════════════
+
+const OPENAI_API_KEY = ''; // ENTER_YOUR_OPENAI_API_KEY_HERE
+const OPENAI_MODEL = 'gpt-4o';
+
+let mockData = null;
+let preComputedStats = null;
+let conversationHistory = [];
+let sidebarChart = null;
+let isWaiting = false;
+
+// ── Helper: Course Name Mapping ────────────────────────────
+const COURSE_NAME_MAP = {
+  'rbiassistantp': 'RBI Assistant Prelims',
+  'rbiassistantm': 'RBI Assistant Mains',
+  'rbigradebp': 'RBI Grade B Prelims',
+  'rbigradebm': 'RBI Grade B Mains',
+  'sbipop': 'SBI PO Prelims',
+  'sbipom': 'SBI PO Mains',
+  'sbiclerkp': 'SBI Clerk Prelims',
+  'sbiclerkm': 'SBI Clerk Mains',
+  'ibpspop': 'IBPS PO Prelims',
+  'ibpspom': 'IBPS PO Mains',
+  'ibpsclerkp': 'IBPS Clerk Prelims',
+  'ibpsclerkm': 'IBPS Clerk Mains',
+  'ibpsrrb': 'IBPS RRB',
+  'ssccgl': 'SSC CGL',
+  'sscchsl': 'SSC CHSL',
+  'sscmts': 'SSC MTS',
+  'cat': 'CAT',
+  'nabard': 'NABARD',
+  'sebigrade': 'SEBI Grade A',
+};
+
+function getExamName(coursename) {
+  if (!coursename) return 'Competitive Exam';
+  const key = coursename.toLowerCase().replace(/[\s_-]/g, '');
+  if (COURSE_NAME_MAP[key]) return COURSE_NAME_MAP[key];
+  // Try partial match
+  for (const [k, v] of Object.entries(COURSE_NAME_MAP)) {
+    if (key.includes(k) || k.includes(key)) return v;
+  }
+  // Fallback: format the raw code as title
+  return coursename.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[\s_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatUsername(username) {
+  if (!username) return 'Student';
+  return username.replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\d+/g, '').trim() || 'Student';
+}
+
+// ── Mock Test Catalog (Dummy Data for Testing) ────────────
+// Each mock has an ID, name, topics it covers, difficulty, and question count.
+// In production, this would come from Oliveboard's backend API.
+const MOCK_CATALOG = [
+  { id: 'MOCK_101', name: 'RBI Assistant Prelims Mock 1', topics: ['Tables', 'Bar Graphs', 'Pie Charts', 'Reading Comprehension', 'Syllogism'], difficulty: 'Medium', questions: 100, section_focus: 'All Sections' },
+  { id: 'MOCK_102', name: 'RBI Assistant Prelims Mock 2', topics: ['Line Graphs', 'Caselets', 'Number Series', 'Coding-Decoding', 'Cloze Test'], difficulty: 'Medium', questions: 100, section_focus: 'All Sections' },
+  { id: 'MOCK_103', name: 'DI Specialist Mock', topics: ['Tables', 'Bar Graphs', 'Pie Charts', 'Line Graphs', 'Caselets', 'Mixed Graphs'], difficulty: 'Hard', questions: 35, section_focus: 'Numerical Ability' },
+  { id: 'MOCK_104', name: 'Reasoning Puzzles Intensive', topics: ['Puzzles', 'Seating Arrangement', 'Floor Based Puzzles', 'Syllogism', 'Coding-Decoding'], difficulty: 'Hard', questions: 35, section_focus: 'Reasoning Ability' },
+  { id: 'MOCK_105', name: 'English Language Booster', topics: ['Reading Comprehension', 'Cloze Test', 'Parajumbles', 'Sentence Rearrangement', 'Error Spotting', 'Fill in the Blanks'], difficulty: 'Medium', questions: 30, section_focus: 'English Language' },
+  { id: 'MOCK_106', name: 'Speed Math Challenge', topics: ['Simplification', 'Approximation', 'Number Series', 'Quadratic Equations'], difficulty: 'Easy', questions: 35, section_focus: 'Numerical Ability' },
+  { id: 'MOCK_107', name: 'Logical Reasoning Advanced', topics: ['Blood Relations', 'Direction Sense', 'Order & Ranking', 'Inequalities', 'Syllogism'], difficulty: 'Hard', questions: 35, section_focus: 'Reasoning Ability' },
+  { id: 'MOCK_108', name: 'Banking Awareness Special', topics: ['Banking Awareness', 'Current Affairs', 'Financial Terms'], difficulty: 'Medium', questions: 40, section_focus: 'General Awareness' },
+  { id: 'MOCK_109', name: 'RBI Assistant Prelims Mock 3', topics: ['Simplification', 'Puzzles', 'Reading Comprehension', 'Inequalities', 'Bar Graphs'], difficulty: 'Easy', questions: 100, section_focus: 'All Sections' },
+  { id: 'MOCK_110', name: 'Quant Arithmetic Focus', topics: ['Percentage', 'Profit & Loss', 'Time & Work', 'Ratio & Proportion', 'Average'], difficulty: 'Medium', questions: 35, section_focus: 'Numerical Ability' },
+  { id: 'MOCK_111', name: 'Previous Year Paper Mock', topics: ['Tables', 'Syllogism', 'Reading Comprehension', 'Number Series', 'Seating Arrangement'], difficulty: 'Medium', questions: 100, section_focus: 'All Sections' },
+  { id: 'MOCK_112', name: 'Final Sprint Mock (Hard)', topics: ['Caselets', 'Floor Based Puzzles', 'Parajumbles', 'Quadratic Equations', 'Inequalities'], difficulty: 'Hard', questions: 100, section_focus: 'All Sections' }
+];
+
+// ── Recommendation Engine ─────────────────────────────────
+// Matches the student's weak topics against the mock catalog.
+// Returns top N mocks sorted by relevance (number of matching weak topics).
+function getRecommendedMocks(stats, maxResults = 5) {
+  const ta = stats.topic_analysis || {};
+  // Find topics where accuracy < 60% (WEAK or CRITICAL)
+  const weakTopics = Object.entries(ta)
+    .filter(([, v]) => v.accuracy < 60)
+    .map(([k]) => k.toLowerCase());
+
+  if (weakTopics.length === 0) return [];
+
+  // Score each mock by how many weak topics it covers
+  const scored = MOCK_CATALOG.map(mock => {
+    const mockTopicsLower = mock.topics.map(t => t.toLowerCase());
+    const matchingTopics = weakTopics.filter(wt =>
+      mockTopicsLower.some(mt => mt.includes(wt) || wt.includes(mt))
+    );
+    return { ...mock, matchCount: matchingTopics.length, matchedTopics: matchingTopics };
+  });
+
+  // Sort by match count (descending), then by difficulty (Hard first for weak areas)
+  return scored
+    .filter(m => m.matchCount > 0)
+    .sort((a, b) => b.matchCount - a.matchCount || (b.difficulty === 'Hard' ? 1 : 0) - (a.difficulty === 'Hard' ? 1 : 0))
+    .slice(0, maxResults);
+}
+
+// ── Pre-compute Stats (Oliveboard Format) ─────────────────
+function preCompute(data) {
+  const results = data.results || [];
+  const sectionNames = data.sectionnames || {};
+  const qdata = data.qdata || {};
+  const allQAttempts = data.allquestion_attempts || {};
+  const topicsData = data.alltopics_data || {};
+  const topicAccuracy = data.topic_accuracy || {};
+
+  // Score progression (sorted by test taken date)
+  const sortedResults = [...results].sort((a, b) => new Date(a.testtakenat) - new Date(b.testtakenat));
+  const scoreProg = sortedResults.map(r => ({
+    id: r.testid,
+    score: r.total,
+    percentile: parseFloat(r.percentile.toFixed(1)),
+    date: r.testtakenat ? r.testtakenat.slice(0, 10) : '',
+    name: r.testname,
+    accuracy: r.overall_accuracy,
+    attempt_rate: r.overall_attempt_rate,
+    total_correct: r.totalc,
+    total_wrong: r.totalw,
+    sectional_scores: r.sectionalscores,
+    sectional_accuracy: r.sectional_accuracy,
+    sectional_percentiles: r.sectionalpercentiles
+  }));
+
+  const scores = scoreProg.map(s => s.score);
+  const pcts = scoreProg.map(s => s.percentile);
+  const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '0';
+  const avgPct = pcts.length > 0 ? (pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(1) : '0';
+  const improvement = scores.length >= 2 ? (scores[scores.length - 1] - scores[0]).toFixed(0) : '0';
+  const last3 = scores.slice(-3), first3 = scores.slice(0, 3);
+  const rollingTrend = (last3.length > 0 && first3.length > 0)
+    ? (last3.reduce((a, b) => a + b, 0) / last3.length - first3.reduce((a, b) => a + b, 0) / first3.length).toFixed(1)
+    : '0';
+
+  // Sectional analysis across all mocks
+  const sectionStats = {};
+  for (const r of sortedResults) {
+    if (r.sectionalscores) {
+      for (const [sec, score] of Object.entries(r.sectionalscores)) {
+        if (!sectionStats[sec]) sectionStats[sec] = { scores: [], accuracies: [], percentiles: [], attempts: [], wrong: [] };
+        sectionStats[sec].scores.push(score);
+        if (r.sectional_accuracy && r.sectional_accuracy[sec] !== undefined) sectionStats[sec].accuracies.push(r.sectional_accuracy[sec]);
+        if (r.sectionalpercentiles && r.sectionalpercentiles[sec] !== undefined) sectionStats[sec].percentiles.push(r.sectionalpercentiles[sec]);
+        if (r.sectionalrw && r.sectionalrw[sec]) {
+          sectionStats[sec].wrong.push(r.sectionalrw[sec].wrong || 0);
+        }
+      }
+    }
+  }
+
+  const sectionSummary = {};
+  for (const [sec, s] of Object.entries(sectionStats)) {
+    const secName = sectionNames[sec] || sec.toUpperCase();
+    const avgSc = (s.scores.reduce((a, b) => a + b, 0) / s.scores.length).toFixed(1);
+    const avgAcc = s.accuracies.length > 0 ? (s.accuracies.reduce((a, b) => a + b, 0) / s.accuracies.length).toFixed(1) : 'N/A';
+    const avgPctl = s.percentiles.length > 0 ? (s.percentiles.reduce((a, b) => a + b, 0) / s.percentiles.length).toFixed(1) : 'N/A';
+    const trend = s.scores.length >= 2 ? (s.scores[s.scores.length - 1] - s.scores[0]).toFixed(1) : '0';
+    sectionSummary[secName] = {
+      code: sec,
+      avg_score: parseFloat(avgSc),
+      avg_accuracy: avgAcc === 'N/A' ? avgAcc : parseFloat(avgAcc),
+      avg_percentile: avgPctl === 'N/A' ? avgPctl : parseFloat(avgPctl),
+      trend: parseFloat(trend),
+      total_wrong: s.wrong.reduce((a, b) => a + b, 0),
+      classification: avgAcc !== 'N/A' ? (parseFloat(avgAcc) >= 70 ? 'STRENGTH' : parseFloat(avgAcc) >= 50 ? 'AVERAGE' : parseFloat(avgAcc) >= 35 ? 'WEAK' : 'CRITICAL_WEAK') : 'UNKNOWN'
+    };
+  }
+
+  // Topic analysis from alltopics_data
+  const topicSummary = {};
+  for (const [topic, td] of Object.entries(topicsData)) {
+    const acc = td.total_questions > 0 ? parseFloat(((td.correct / td.total_questions) * 100).toFixed(1)) : 0;
+    const avgTime = td.avg_time || 0;
+    topicSummary[topic] = {
+      accuracy: acc,
+      avg_time_sec: parseFloat(avgTime),
+      total_questions: td.total_questions,
+      attempted: td.attempted,
+      correct: td.correct,
+      section: sectionNames[td.section] || td.section,
+      section_code: td.section,
+      ideal_time_sec: td.ideal_time || 0,
+      classification: acc >= 70 ? 'STRENGTH' : acc >= 50 ? 'AVERAGE' : acc >= 35 ? 'WEAK' : 'CRITICAL_WEAK'
+    };
+  }
+
+  // Per-mock sectional breakdown
+  const perMockSections = sortedResults.map(r => {
+    const secs = {};
+    if (r.sectionalscores) {
+      for (const [sec, score] of Object.entries(r.sectionalscores)) {
+        const secName = sectionNames[sec] || sec.toUpperCase();
+        secs[secName] = {
+          score: score,
+          accuracy: r.sectional_accuracy ? r.sectional_accuracy[sec] : null,
+          percentile: r.sectionalpercentiles ? parseFloat(r.sectionalpercentiles[sec].toFixed(1)) : null
+        };
+      }
+    }
+    return { test_id: r.testid, test_name: r.testname, sections: secs };
+  });
+
+  // Error analysis from allquestion_attempts
+  let totalQsAnalyzed = 0;
+  let totalWrong = 0;
+  let conceptualErrors = 0;
+  let carelessErrors = 0;
+  let totalNegMarks = 0;
+  const errorTopicFreq = {};
+  const topicTimes = {};
+
+  for (const [qid, qa] of Object.entries(allQAttempts)) {
+    if (!qa.attempted) continue;
+    totalQsAnalyzed++;
+    const qInfo = qdata[qid];
+    const topicName = qa.tags || (qInfo ? qInfo[2] : 'Unknown');
+    const timeTaken = qa.time_taken || 0;
+
+    if (!topicTimes[topicName]) topicTimes[topicName] = [];
+    topicTimes[topicName].push(timeTaken);
+
+    if (!qa.correct) {
+      totalWrong++;
+      totalNegMarks += 0.25; // standard negative marking
+      errorTopicFreq[topicName] = (errorTopicFreq[topicName] || 0) + 1;
+      if (timeTaken > 180) conceptualErrors++;
+      if (timeTaken < 60) carelessErrors++;
+    }
+  }
+
+  const topErrorTopics = Object.entries(errorTopicFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([t, c]) => ({ topic: t, errors: c }));
+
+  const slowTopics = Object.entries(topicTimes)
+    .map(([t, times]) => ({ topic: t, avg_time: parseFloat((times.reduce((a, b) => a + b, 0) / times.length).toFixed(0)) }))
+    .filter(s => s.avg_time > 150)
+    .sort((a, b) => b.avg_time - a.avg_time);
+
+  const fastWrong = Object.values(allQAttempts).filter(qa => qa.attempted && !qa.correct && (qa.time_taken || 0) < 60);
+  const fastWrongRate = totalQsAnalyzed > 0 ? parseFloat((fastWrong.length / totalQsAnalyzed * 100).toFixed(1)) : 0;
+
+  // Date range
+  const dates = sortedResults.map(r => r.testtakenat).filter(Boolean).sort();
+  const fromDate = dates.length > 0 ? dates[0].slice(0, 10) : 'N/A';
+  const toDate = dates.length > 0 ? dates[dates.length - 1].slice(0, 10) : 'N/A';
+
+  return {
+    score_progression: scoreProg,
+    summary: {
+      avg_score: parseFloat(avgScore),
+      avg_percentile: parseFloat(avgPct),
+      best_score: scores.length > 0 ? Math.max(...scores) : 0,
+      lowest_score: scores.length > 0 ? Math.min(...scores) : 0,
+      improvement_points: parseInt(improvement),
+      rolling_trend_vs_first3: parseFloat(rollingTrend),
+      total_mocks: results.length,
+      score_variance: scores.length > 0 ? parseFloat((Math.max(...scores) - Math.min(...scores)).toFixed(0)) : 0
+    },
+    section_analysis: sectionSummary,
+    topic_analysis: topicSummary,
+    per_mock_section_breakdown: perMockSections,
+    error_analysis: {
+      total_wrong: totalWrong,
+      total_negative_marks: parseFloat(totalNegMarks.toFixed(2)),
+      conceptual_errors: conceptualErrors,
+      careless_errors: carelessErrors,
+      error_rate_pct: totalQsAnalyzed > 0 ? parseFloat((totalWrong / totalQsAnalyzed * 100).toFixed(1)) : 0,
+      fast_wrong_rate_pct: fastWrongRate,
+      top_error_topics: topErrorTopics
+    },
+    slow_topics: slowTopics,
+    total_questions_analyzed: totalQsAnalyzed,
+    date_range: { from: fromDate, to: toDate }
+  };
+}
+
+// ── System Prompt Builder (Oliveboard Format) ─────────────
+function buildSystemPrompt(data, stats) {
+  const username = formatUsername(data.username);
+  const firstName = username.split(' ')[0];
+  const examName = getExamName(data.coursename);
+  const totalMocks = (data.results || []).length;
+  const sections = Object.entries(data.sectionnames || {}).map(([k, v]) => `${v} (${k})`).join(', ');
+  const dateRange = stats.date_range || {};
+
+  return `You are OliveBot, the PERSONAL EXAM COACH for ${firstName} on the Oliveboard platform.
+MISSION: Analyze ${firstName}'s performance with absolute precision, identify growth patterns, and guide them with motivational, mentor-like advice to crack the ${examName} exam.
+
+TRACK A — Banking: SBI PO, SBI Clerk, IBPS PO, IBPS Clerk, RBI Grade B, RBI Assistant, NABARD
+TRACK B — SSC/Railways: SSC CGL, SSC CHSL, SSC MTS, RRB NTPC, RRB Group D
+TRACK C — MBA: CAT, XAT, SNAP, NMAT, IIFT, MAT
+TRACK D — UPSC/State PSC: UPSC CSE Prelims, State PSC Prelims, CAPF
+
+## IDENTITY & BOUNDARIES
+You ONLY operate within these intent domains:
+1. Performance analysis (scores, accuracy, time, topic breakdown)
+2. Study planning and roadmaps
+3. Exam strategy (attempt order, time allocation, cutoffs)
+4. Motivation and mindset for competitive exam prep
+5. Exam pattern, syllabus, and cutoff information
+6. Questions about the student's own mock test data
+
+REFUSE all other queries with: "I'm your exam performance coach — I can only help with your preparation, scores, study plans, and exam strategy."
+
+## STUDENT CONTEXT
+Name: ${username} (address as ${firstName})
+Target Exam: ${examName}
+Total Mocks Attempted: ${totalMocks}
+Sections: ${sections}
+Date Range: ${dateRange.from || 'N/A'} to ${dateRange.to || 'N/A'}
+
+## DATA PROTOCOL
+1. ONLY cite numbers from the pre-computed stats below — NEVER recalculate or guess
+2. If data is missing, say "Insufficient data to calculate X"
+3. Show your math: "7 correct / 12 attempts = 58.3%"
+4. Round percentages to 1 decimal place
+5. Need 3+ data points before calling something a "trend"
+6. Never extrapolate beyond what's in the data
+
+## GROUNDING & DATA INTEGRITY (CRITICAL)
+- **Verify Mock IDs**: Before answering "How was my 5th mock?" or similar, count the items in 'score_progression'. If the user asks for Mock N and N > total mocks, state: "I only see [Total] mock tests in your data. I don't have information for a [Nth] mock."
+- **Topical Honesty**: If asked about a subject/topic NOT found in 'topic_analysis', DO NOT guess. State: "Your uploaded data does not contain any questions or performance records for [Topic]."
+- **No "Typical" Assumptions**: Do not use phrases like "Usually students..." or "Typically in this exam..." to fill gaps in the student's actual performance. Stay 100% grounded in the provided JSON.
+- **Contextual Correction**: If the user makes a false premise (e.g., "Why did I fail all mocks?" when they passed some), gently correct them using the stats: "Actually, looking at your data, you passed [X] out of [Y] mocks..."
+
+## MENTOR PERSONA & PROGRESSIVE FEEDBACK
+1. You are ${firstName}'s PERSONAL MENTOR. Your tone is supportive, firm but encouraging, and deeply familiar with their preparation journey.
+2. **The Growth Hook**: EVERY analysis response MUST start by acknowledging ${firstName}'s recent progress:
+   - Compare the latest score in 'score_progression' with the one before it.
+   - If score IMPROVED: Start with high-energy praise ("Fantastic jump, ${firstName}! Your score went from [X] to [Y]...").
+   - If score DECLINED: Start with a "Bounce Back" mindset ("Don't let the last mock get you down, ${firstName}. Dips are data points, not defeats...").
+3. **The Mentor's Verdict**: Conclude every detailed response with a "### 👨‍🏫 Mentor's Verdict" section containing exactly one high-impact action sentence.
+
+## FEW-SHOT EXAMPLES (Tone Check)
+User: "How am I doing?"
+Assistant: "Fantastic jump, ${firstName}! Your latest score of 72 is an improvement from your previous 68—your percentile is climbing!
+<STATS items='[{"val":"72","label":"Latest Score","color":"olive"},{"val":"82.6%","label":"Percentile","color":"green"}]'/>
+Right now, you are on a solid trajectory for ${examName}. Your Quant is your strongest suit, but we need to sharpen your Reading Comprehension.
+### 👨‍🏫 Mentor's Verdict
+Your progress is undeniable, so let's push it further by attempting one high-difficulty English mock tomorrow."
+
+## PRE-COMPUTED STATISTICS
+${JSON.stringify(stats, null, 2)}
+
+## EXAM-SPECIFIC CONTEXT
+### Banking (SBI PO / IBPS PO / RBI Assistant)
+Marking: +1 correct, -0.25 wrong
+Cutoffs: SBI PO ~65-70 marks / 70th+ percentile, IBPS PO ~60-65 / 68th+, RBI Grade B ~75-80 / 80th+, RBI Assistant ~70-75 / 75th+
+Time: 100 questions in 60 minutes = avg 36s/question
+DI/Puzzle weight: 30-40% of total score
+
+## ANALYSIS FRAMEWORK (use these sections)
+Section 1 — Executive Summary: trajectory, level vs cutoff, verdict (ON TRACK ✅ / NEEDS ATTENTION ⚠️ / CRITICAL 🔴)
+Section 2 — Score & Percentile Analysis: progression, avg/best/worst/variance, percentile trend, rolling avg, improvement %
+Section 3 — Section-wise & Topic Deep Dive: per section accuracy/score/percentile, per topic accuracy, time, classification (✅ STRENGTH >70%, ⚠️ AVERAGE 50-70%, 🔴 WEAK 35-50%, 💀 CRITICAL <35%)
+Section 4 — Time Management Audit: avg time/q, section-wise, time sinks (>150s), "fast but wrong" pattern (<60s AND wrong), recommended allocation
+Section 5 — Error Pattern Analysis: total wrong, neg marks, conceptual (wrong + >180s), careless (wrong + <60s), high-frequency error topics
+Section 6 — Competitive Positioning: percentile vs cutoff, gap, trajectory estimate, honest assessment
+Section 7 — Week-by-Week Roadmap: Foundation→Application→Mocks, Targeted+Mocks 3x/week, Only mocks+review
+Section 8 — Exam Strategy: optimal attempt order, skip criteria, safe attempt count, high-ROI topics
+
+## VISUAL OUTPUT (use these special tags for rich rendering)
+For stat grids: <STATS items='[{"val":"78","label":"Latest Score","color":"olive"},{"val":"82.6%","label":"Percentile","color":"green"}]'/>
+Colors: "olive" | "green" | "amber" | "red"
+
+For charts: <CHART type="bar" title="Topic Accuracy (%)" labels='["Quant","Reasoning","English","GK"]' data='[68,72,58,80]' colors='["#5b9bd5","#8db840","#e8a645","#4ec9b0"]'/>
+Types: "bar" | "line"
+
+For roadmaps: <ROADMAP weeks='[{"week":1,"theme":"DI + Puzzles Blitz","focus":"10 DI sets daily","tags":["Data Interpretation","Puzzles"],"priority":"critical"}]'/>
+priority: "critical" | "attention" | ""
+
+For mock test recommendations: <MOCK_LINK id="MOCK_103" name="DI Specialist Mock" difficulty="Hard" questions="35" topics="Tables, Bar Graphs, Pie Charts" reason="Targets your weak DI areas"/>
+You MUST use the MOCK_LINK tag when recommending mock tests. ONLY recommend mocks from the list below — NEVER invent mock IDs or names.
+
+## MOCK TEST CATALOG (COMPLETE)
+Below is the COMPLETE catalog of available mock tests. You must select recommendations ONLY from this list.
+${JSON.stringify(MOCK_CATALOG.map(m => ({id: m.id, name: m.name, topics: m.topics.join(', '), difficulty: m.difficulty, questions: m.questions, focus: m.section_focus})), null, 2)}
+
+## AI RECOMMENDATION PROTOCOL
+You are the SOLE recommendation engine. Follow this protocol EXACTLY:
+
+### Step 1 — Identify Weaknesses
+Read 'topic_analysis' from the stats. Extract all topics where accuracy < 60%.
+
+### Step 2 — Semantic Matching
+For each weak topic, scan the MOCK TEST CATALOG above. A mock is a match if ANY of its topics are semantically related to the student's weak topic. Use your understanding of topic relationships:
+- "Percentage" ≈ "Percent" ≈ "Profit & Loss" (arithmetic family)
+- "Puzzles" ≈ "Seating Arrangement" ≈ "Floor Based Puzzles" (reasoning family)
+- "Reading Comprehension" ≈ "Cloze Test" ≈ "Parajumbles" (English family)
+
+### Step 3 — Rank & Select
+Rank matched mocks by:
+1. Number of overlapping weak topics (most overlap first)
+2. Difficulty preference: "Hard" > "Medium" > "Easy" for weak areas (challenge builds mastery)
+3. Section focus alignment with the weakest section
+
+Select top 2-3 mocks maximum.
+
+### Step 4 — Output
+Use <MOCK_LINK> tags with attributes: id, name, difficulty, questions, topics, reason.
+The 'reason' MUST reference the student's specific weak topic and its accuracy.
+
+### ABSOLUTE CONSTRAINTS
+- You are FORBIDDEN from generating any mock ID not in the catalog above.
+- Valid IDs: MOCK_101, MOCK_102, MOCK_103, MOCK_104, MOCK_105, MOCK_106, MOCK_107, MOCK_108, MOCK_109, MOCK_110, MOCK_111, MOCK_112.
+- If NO mock in the catalog matches the student's weaknesses, state: "None of the available mocks directly target your current weak areas. I recommend reviewing [specific topics] independently."
+- NEVER invent a mock name or ID.
+
+### FEW-SHOT RECOMMENDATION EXAMPLES
+Example 1 — Student weak in "Tables" (42%), "Bar Graphs" (38%):
+"Based on your data, your weakest areas are Tables (42%) and Bar Graphs (38%). Here are the mocks that directly target these:"
+<MOCK_LINK id="MOCK_103" name="DI Specialist Mock" difficulty="Hard" questions="35" topics="Tables, Bar Graphs, Pie Charts" reason="Directly targets your weak Tables (42%) and Bar Graphs (38%)"/>
+
+Example 2 — Student has no weak topics (all > 60%):
+"Great news! All your topic accuracies are above 60%. No targeted mock is needed right now — focus on maintaining your strengths and attempt a full-length mock to simulate exam conditions."
+
+## SPECIAL COMMANDS
+"Full analysis" → All 8 sections + top 2 recommended mocks
+"Quick summary" → Section 1 + 3 actions + 1 recommended mock
+"My weak areas" → Section 3 weak/critical only + 2-3 targeted mocks
+"Time audit" → Section 4 only
+"This week's plan" → Week 1 of Section 7 + 1 mock to attempt this week
+"How am I doing?" → Section 1 + Section 6 + 1 mock suggestion
+"Compare mock N vs mock M" → Head-to-head comparison
+"Study roadmap" → Section 7 all weeks with ROADMAP block + mock per week
+"What should I attempt?" → Section 8 + top 3 recommended mocks
+
+## RESPONSE FORMATTING
+1. Always address by first name (${firstName})
+2. Use ## for sections, ### for subsections
+3. Start with a "Growth Hook" based on 'score_progression'
+4. Use STATS block first after greeting
+5. Use CHART blocks where data warrants
+6. Use ROADMAP block for study plans
+7. Use tables for subtopic breakdowns
+8. Bold all numerical insights
+9. ✅ ⚠️ 🔴 📈 📉 for status indicators
+10. Conclude EVERY response with:
+    ### 👨‍🏫 Mentor's Verdict
+    [Exactly one high-impact action sentence]
+11. End every analysis with "Your next 48 hours:" (max 3 bullet actions)
+12. Max 600 words unless asked for full analysis
+11. Never repeat numbers in both prose AND table — pick one
+
+## TONE
+- Encouraging but honest — don't sugarcoat 30% accuracy
+- Coach-not-teacher — you guide, they act
+- Data-first — every claim has a number
+- Specific over vague: "Practice 15 DI caselet sets this week, targeting <3 min/set" NOT "Practice more DI"
+- Celebrate tangible progress explicitly`;
+}
+
+// ── File Upload ────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const parsed = JSON.parse(evt.target.result);
+      if (!parsed.username || !parsed.results || !parsed.coursename) {
+        alert('Invalid JSON structure. Must contain username, results, and coursename. Please upload Oliveboard mock test data.');
+        return;
+      }
+      mockData = parsed;
+      preComputedStats = preCompute(mockData);
+      populateSidebar();
+      document.getElementById('upload-status').style.display = 'block';
+      document.getElementById('welcome-screen').style.display = 'none';
+      conversationHistory = [];
+      appendBotMessage(buildWelcomeMessage(mockData, preComputedStats));
+    } catch(err) {
+      alert('Invalid JSON file. Error: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+// Drag and drop
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--olive)'; uploadZone.style.background = 'var(--olive-glow)'; });
+uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = ''; uploadZone.style.background = ''; });
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.style.borderColor = ''; uploadZone.style.background = '';
+  const file = e.dataTransfer.files[0];
+  if (file) { const dt = new DataTransfer(); dt.items.add(file); document.getElementById('file-input').files = dt.files; document.getElementById('file-input').dispatchEvent(new Event('change')); }
+});
+
+// ── Populate Sidebar ───────────────────────────────────────
+function populateSidebar() {
+  const d = mockData, s = preComputedStats.summary;
+  const displayName = formatUsername(d.username);
+  const examName = getExamName(d.coursename);
+  document.getElementById('s-name').textContent = displayName;
+  document.getElementById('s-exam').textContent = examName;
+  document.getElementById('s-mocks').textContent = `${(d.results || []).length} mocks`;
+  document.getElementById('s-days').textContent = `${(d.results || []).length} tests`;
+  document.getElementById('avg-score').textContent = s.avg_score;
+  document.getElementById('avg-pct').textContent = s.avg_percentile + '%';
+  document.getElementById('best-score').textContent = s.best_score;
+  document.getElementById('improvement').textContent = (s.improvement_points > 0 ? '+' : '') + s.improvement_points;
+
+  const trendEl = document.getElementById('score-trend');
+  trendEl.textContent = s.rolling_trend_vs_first3 > 0 ? `📈 +${s.rolling_trend_vs_first3} vs early` : `📉 ${s.rolling_trend_vs_first3} vs early`;
+  trendEl.className = 'mini-stat-trend ' + (s.rolling_trend_vs_first3 > 0 ? 'trend-up' : 'trend-dn');
+
+  const pctTrendEl = document.getElementById('pct-trend');
+  const pcts = preComputedStats.score_progression.map(s => s.percentile);
+  const pctDiff = pcts.length >= 2 ? (pcts[pcts.length-1] - pcts[0]).toFixed(1) : '0';
+  pctTrendEl.textContent = pctDiff > 0 ? `📈 +${pctDiff}%` : `📉 ${pctDiff}%`;
+  pctTrendEl.className = 'mini-stat-trend ' + (pctDiff > 0 ? 'trend-up' : 'trend-dn');
+
+  document.getElementById('exam-badge-text').textContent = examName;
+  document.getElementById('student-section').style.display = '';
+  document.getElementById('stats-section').style.display = '';
+  document.getElementById('chart-section').style.display = '';
+  document.getElementById('quick-prompts').style.display = '';
+
+  // Sidebar chart
+  const ctx = document.getElementById('sidebar-chart').getContext('2d');
+  if (sidebarChart) sidebarChart.destroy();
+  const labels = preComputedStats.score_progression.map((_, i) => `M${i+1}`);
+  const scores = preComputedStats.score_progression.map(s => s.score);
+  sidebarChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{
+      data: scores, borderColor: '#8db840', backgroundColor: 'rgba(141,184,64,0.06)',
+      borderWidth: 2, pointBackgroundColor: '#8db840', pointRadius: 3, pointHoverRadius: 5, fill: true, tension: 0.4
+    }]},
+    options: {
+      responsive: true, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e232e', titleColor: '#8db840', bodyColor: '#e8ebf2', borderColor: 'rgba(141,184,64,0.3)', borderWidth: 1 }},
+      scales: { x: { ticks: { color: '#5a6170', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' }}, y: { ticks: { color: '#5a6170', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' }}}
+    }
+  });
+}
+
+// ── Welcome Message ────────────────────────────────────────
+function buildWelcomeMessage(data, stats) {
+  const s = stats.summary;
+  const username = formatUsername(data.username);
+  const firstName = username.split(' ')[0];
+  const examName = getExamName(data.coursename);
+  const totalMocks = (data.results || []).length;
+  const ta = stats.topic_analysis;
+  const weakTopics = Object.entries(ta).filter(([, v]) => v.accuracy < 60).map(([k]) => k);
+
+  // Section analysis for weak sections
+  const sa = stats.section_analysis || {};
+  const weakSections = Object.entries(sa).filter(([, v]) => v.avg_accuracy !== 'N/A' && v.avg_accuracy < 60).map(([k]) => k);
+  const allWeak = [...new Set([...weakTopics, ...weakSections])];
+
+  return `<STATS items='[{"val":"${s.avg_score}","label":"Avg Score","color":"olive"},{"val":"${s.avg_percentile}%","label":"Avg Percentile","color":"${s.avg_percentile >= 70 ? 'green' : s.avg_percentile >= 60 ? 'amber' : 'red'}"},{"val":"${s.improvement_points > 0 ? '+' : ''}${s.improvement_points}","label":"Improvement","color":"${s.improvement_points > 0 ? 'green' : 'red'}"},{"val":"${totalMocks}","label":"Mocks Taken","color":"olive"}]'/>
+
+Hey **${firstName}!** 👋 I've loaded your **${totalMocks} mock tests** for **${examName}**.
+
+Here's your instant snapshot:
+
+- 📈 You've improved by **${s.improvement_points > 0 ? '+' : ''}${s.improvement_points} points** from Mock 1 to Mock ${s.total_mocks}
+- 🎯 Your average percentile is **${s.avg_percentile}%** — ${s.avg_percentile >= 70 ? '✅ on track for the cutoff' : '⚠️ needs to reach 70%+ for most banking exams'}
+- 🔴 Focus areas: **${allWeak.length > 0 ? allWeak.slice(0, 5).join(', ') : 'looking good across the board!'}**
+
+What would you like to dive into? Use the quick prompts on the left, or ask me anything.`;
+}
+
+// ── Intent Check ───────────────────────────────────────────
+// ── AI Intent Classifier (gpt-4o-mini) ─────────────────────
+// Uses a fast, cheap model to classify whether the user's message
+// is within the scope of an exam performance coaching assistant.
+// Returns true if the message is IN scope, false if out of scope.
+async function classifyIntent(userMessage, examName) {
+  const classifierPrompt = `You are an intent classifier for an AI exam coaching assistant called OliveBot.
+OliveBot is ONLY allowed to help with these topics:
+- Mock test performance analysis (scores, percentiles, accuracy, time)
+- Study plans and roadmaps for competitive exams
+- Exam strategy (which questions to attempt, time management)
+- Competitive exam syllabi, patterns, cutoffs (Banking, SSC, UPSC, MBA)
+- Motivation and mindset for exam preparation
+- Questions about the student's own test data
+
+The student is currently preparing for: ${examName || 'a competitive exam'}.
+
+Given the user message below, classify it as:
+- "IN_SCOPE" if it relates to any of the allowed topics above (even loosely)
+- "OUT_OF_SCOPE" if it is completely unrelated (e.g., cooking, movies, general coding help, personal relationships, news, weather, financial advice etc.)
+
+IMPORTANT: When in doubt, lean towards IN_SCOPE. A question that could plausibly relate to exam prep should be IN_SCOPE.
+Respond with ONLY a valid JSON object like this: {"intent": "IN_SCOPE", "reason": "brief reason"}
+
+User message: "${userMessage.replace(/"/g, "'")}"`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 80,
+        temperature: 0,
+        messages: [{ role: 'user', content: classifierPrompt }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || '';
+    // Strip markdown code fences if present
+    const cleaned = raw.replace(/^```json\n?|```$/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    console.log('[OliveBot Intent]', parsed);
+    return parsed.intent === 'OUT_OF_SCOPE';
+  } catch (err) {
+    // On any error, default to IN_SCOPE (fail open — don't block real questions)
+    console.warn('[OliveBot Intent Classifier Error]', err);
+    return false;
+  }
+}
+
+// ── Render Special Blocks ──────────────────────────────────
+function renderMessage(raw) {
+  let html = raw.trim();
+
+  // 0. Formatting (inline) runs first so it applies inside lists/tables
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+
+  // 1. Process block-level tags first (placeholders to avoid p-wrap)
+  const blocks = [];
+  const pushBlock = (content) => {
+    const id = `__BLOCK_${blocks.length}__`;
+    blocks.push(content);
+    return `\n\n${id}\n\n`;
+  };
+
+  // Helper to extract attributes robustly
+  const getAttr = (str, name) => {
+    const match = str.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
+    return match ? (match[1] !== undefined ? match[1] : match[2]).trim() : '';
+  };
+
+  // STATS block
+  html = html.replace(/<STATS([^>]+)>/ig, (match, attrs) => {
+    try {
+      const items = JSON.parse(getAttr(attrs, 'items') || '[]');
+      return pushBlock(`<div class="stat-grid">${items.map(it => `<div class="stat-card"><div class="stat-card-val ${it.color}">${it.val}</div><div class="stat-card-lbl">${it.label}</div></div>`).join('')}</div>`);
+    } catch { return ''; }
+  });
+
+  // CHART block
+  html = html.replace(/<CHART([^>]+)>/ig, (match, attrs) => {
+    const type = getAttr(attrs, 'type');
+    const title = getAttr(attrs, 'title');
+    const labels = getAttr(attrs, 'labels');
+    const data = getAttr(attrs, 'data');
+    const colors = getAttr(attrs, 'colors');
+    const id = 'chart-' + Math.random().toString(36).slice(2);
+    setTimeout(() => renderInlineChart(id, type, title, labels, data, colors), 80);
+    return pushBlock(`<div class="inline-chart"><div class="chart-title">${title}</div><canvas id="${id}"></canvas></div>`);
+  });
+
+  // ROADMAP block
+  html = html.replace(/<ROADMAP([^>]+)>/ig, (match, attrs) => {
+    try {
+      const weeksStr = getAttr(attrs, 'weeks');
+      if (!weeksStr) return '';
+      const weeks = JSON.parse(weeksStr);
+      return pushBlock(`<div class="roadmap">${weeks.map(w => `<div class="week-card ${w.priority === 'critical' ? 'critical' : w.priority === 'attention' ? 'attention' : ''}"><div class="week-title">Week ${w.week}: ${w.theme}</div>${w.focus ? `<div class="week-focus">${w.focus}</div>` : ''}<div class="week-tags">${(w.tags||[]).map(t => `<span class="week-tag">${t}</span>`).join('')}</div></div>`).join('')}</div>`);
+    } catch { return ''; }
+  });
+
+  // MOCK_LINK block
+  html = html.replace(/<MOCK_LINK([^>]+)>/ig, (match, attrs) => {
+    const id = getAttr(attrs, 'id');
+    const name = getAttr(attrs, 'name');
+    let difficulty = getAttr(attrs, 'difficulty');
+    const questions = getAttr(attrs, 'questions');
+    let topics = getAttr(attrs, 'topics');
+    const reason = getAttr(attrs, 'reason');
+
+    if (!id || !name) return ''; // Required fields
+    difficulty = difficulty || 'Medium';
+    topics = topics || '';
+
+    // Verify it exists in catalog
+    const exists = MOCK_CATALOG.some(m => m.id === id);
+    if (!exists) {
+       console.warn('AI tried to recommend non-existent mock:', id);
+       return '';
+    }
+
+    const diffColor = difficulty.toLowerCase() === 'hard' ? 'red' : difficulty.toLowerCase() === 'easy' ? 'green' : 'amber';
+    const topicTags = topics.split(',').filter(t=>t.trim()).map(t => `<span class="mock-rec-tag">${t.trim()}</span>`).join('');
+    return pushBlock(`<div class="mock-rec-grid"><div class="mock-rec-card" onclick="console.log('Mock selected:', '${id}')" title="${reason}">
+      <div class="mock-rec-name">${name} <span class="mock-rec-badge" style="background:var(--${diffColor})">${difficulty}</span></div>
+      <div class="mock-rec-meta">${questions} Questions · ${reason}</div>
+      <div class="mock-rec-tags">${topicTags}</div>
+    </div></div>`);
+  });
+
+  // Markdown tables
+  html = html.replace(/(?:^|\n)(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)+)/g, (match, headerRow, sepRow, bodyRows) => {
+    const headers = headerRow.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`);
+    const rows = bodyRows.trim().split('\n').map(row => {
+      const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${cellsText(c)}</td>`);
+      return `<tr>${cells.join('')}</tr>`;
+    });
+    return pushBlock(`<table><thead><tr>${headers.join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`);
+  });
+
+  function cellsText(s) { return s.trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); }
+
+  // 2. Headings (separate from p-wrap)
+  html = html.replace(/^## (.+)$/gm, m => pushBlock(`<h2>${m.slice(3)}</h2>`));
+  html = html.replace(/^### (.+)$/gm, m => pushBlock(`<h3>${m.slice(4)}</h3>`));
+  html = html.replace(/^#### (.+)$/gm, m => pushBlock(`<h4>${m.slice(5)}</h4>`));
+  html = html.replace(/^##### (.+)$/gm, m => pushBlock(`<h5>${m.slice(6)}</h5>`));
+
+  // 3. Lists (separate from p-wrap)
+  html = html.replace(/(?:^|\n)([ ]*[*-] .+(?:\n[ ]*[*-] .+)*)/g, m => pushBlock(`<ul>${m.trim().split('\n').map(l => `<li>${l.replace(/^[ ]*[*-] /,'')}</li>`).join('')}</ul>`));
+  html = html.replace(/(?:^|\n)([ ]*\d+\. .+(?:\n[ ]*\d+\. .+)*)/g, m => pushBlock(`<ol>${m.trim().split('\n').map(l => `<li>${l.replace(/^[ ]*\d+\. /,'')}</li>`).join('')}</ol>`));
+
+  // 5. Paragraph wrapping (only for remaining text chunks)
+  const segments = html.split(/\n\s*\n/);
+  html = segments.map(seg => {
+    seg = seg.trim();
+    if (!seg) return '';
+    if (seg.startsWith('__BLOCK_')) return seg; // Don't wrap placeholders
+    return `<p>${seg.replace(/\n/g, '<br/>')}</p>`;
+  }).join('');
+
+  // 6. Restore blocks
+  blocks.forEach((content, i) => {
+    html = html.replace(`__BLOCK_${i}__`, content);
+  });
+
+  return html;
+}
+
+function renderInlineChart(id, type, title, labelsStr, dataStr, colorsStr) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  try {
+    const labels = JSON.parse(labelsStr);
+    const data = JSON.parse(dataStr);
+    const colors = JSON.parse(colorsStr);
+    new Chart(el.getContext('2d'), {
+      type: type === 'bar' ? 'bar' : 'line',
+      data: { labels, datasets: [{
+        data, backgroundColor: colors.map(c => c + '33'), borderColor: colors, borderWidth: 2,
+        borderRadius: type === 'bar' ? 6 : 0, pointBackgroundColor: colors,
+        pointRadius: type === 'bar' ? 0 : 4, tension: 0.4, fill: type !== 'bar'
+      }]},
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e232e', titleColor: '#8db840', bodyColor: '#e8ebf2', borderColor: 'rgba(141,184,64,0.3)', borderWidth: 1 }},
+        scales: {
+          x: { ticks: { color: '#9ea5b4', font: { size: 11 }}, grid: { color: 'rgba(255,255,255,0.04)' }},
+          y: { ticks: { color: '#9ea5b4', font: { size: 11 }}, grid: { color: 'rgba(255,255,255,0.04)' }}
+        }
+      }
+    });
+  } catch(e) { console.error('Chart render error', e); }
+}
+
+// ── Message Rendering ──────────────────────────────────────
+function appendUserMessage(text) {
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `<div class="msg-body"><div class="msg-name">You</div><div class="msg-bubble">${text.replace(/</g,'&lt;')}</div></div><div class="msg-avatar user">U</div>`;
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function appendBotMessage(text, isRejection = false) {
+  const div = document.createElement('div');
+  div.className = 'msg';
+  const bubbleClass = isRejection ? 'msg-bubble rejection' : 'msg-bubble';
+  div.innerHTML = `<div class="msg-avatar bot">O</div><div class="msg-body"><div class="msg-name">OliveBot</div><div class="${bubbleClass}">${renderMessage(text)}</div></div>`;
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function appendTyping() {
+  const div = document.createElement('div');
+  div.className = 'msg'; div.id = 'typing-indicator';
+  div.innerHTML = `<div class="msg-avatar bot">O</div><div class="msg-body"><div class="msg-name">OliveBot</div><div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function removeTyping() { document.getElementById('typing-indicator')?.remove(); }
+function scrollBottom() { const m = document.getElementById('messages'); m.scrollTop = m.scrollHeight; }
+
+// ── Send Message (OpenAI GPT-4o) ──────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text || isWaiting) return;
+
+  if (!mockData) {
+    appendBotMessage('⚠️ Please upload your mock test JSON file first using the panel on the left.', true);
+    return;
+  }
+
+  appendUserMessage(text);
+  input.value = ''; input.style.height = 'auto';
+
+  isWaiting = true;
+  document.getElementById('send-btn').disabled = true;
+
+  // ── AI Intent Classification Layer ───────────────────────────
+  // A fast gpt-4o-mini call classifies intent BEFORE the main call.
+  // This prevents off-topic questions from consuming expensive gpt-4o tokens.
+  const examName = mockData ? getExamName(mockData.coursename) : 'competitive exam';
+  const outOfScope = await classifyIntent(text, examName);
+  if (outOfScope) {
+    isWaiting = false;
+    document.getElementById('send-btn').disabled = false;
+    appendBotMessage("I'm your exam performance coach — I can only help with your preparation, scores, study plans, and exam strategy. What would you like to know about your performance?", true);
+    return;
+  }
+  // ────────────────────────────────────────────────────
+
+  conversationHistory.push({ role: 'user', content: text });
+  appendTyping();
+
+  try {
+    const systemPrompt = buildSystemPrompt(mockData, preComputedStats);
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        max_tokens: 2000,
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...conversationHistory
+        ],
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'recommend_mock_tests',
+            description: 'Recommend mock tests from the catalog for the student based on their weak areas. Call this when the student asks for mock recommendations, study plans, or practice suggestions.',
+            parameters: {
+              type: 'object',
+              properties: {
+                recommendations: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      mock_id: { type: 'string', enum: MOCK_CATALOG.map(m => m.id) },
+                      reason: { type: 'string', description: 'Why this mock helps the student, referencing their specific weak topics and accuracy numbers' }
+                    },
+                    required: ['mock_id', 'reason']
+                  },
+                  maxItems: 3
+                }
+              },
+              required: ['recommendations']
+            }
+          }
+        }],
+        tool_choice: 'auto'
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    const message = data.choices?.[0]?.message;
+    let reply = message?.content || '';
+
+    // Handle function (tool) calls — Layer 2 anti-hallucination
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall.function?.name === 'recommend_mock_tests') {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            const recs = args.recommendations || [];
+            let mockLinksHtml = '';
+            for (const rec of recs) {
+              const mock = MOCK_CATALOG.find(m => m.id === rec.mock_id);
+              if (mock) {
+                mockLinksHtml += `\n<MOCK_LINK id="${mock.id}" name="${mock.name}" difficulty="${mock.difficulty}" questions="${mock.questions}" topics="${mock.topics.join(', ')}" reason="${rec.reason}"/>`;
+              } else {
+                console.warn('[OliveBot] Tool call returned invalid mock_id:', rec.mock_id);
+              }
+            }
+            // If we got tool calls but no text content, make a follow-up call for the text
+            if (!reply && mockLinksHtml) {
+              // Append validated mock links and ask AI for the text
+              conversationHistory.push(message);
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: 'success', rendered_mocks: recs.map(r => r.mock_id) })
+              });
+              const followUp = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+                body: JSON.stringify({
+                  model: OPENAI_MODEL,
+                  max_tokens: 2000,
+                  temperature: 0.7,
+                  messages: [{ role: 'system', content: systemPrompt }, ...conversationHistory]
+                })
+              });
+              const followUpData = await followUp.json();
+              reply = (followUpData.choices?.[0]?.message?.content || '') + mockLinksHtml;
+              conversationHistory.pop(); // Remove tool response
+              conversationHistory.pop(); // Remove assistant tool_calls message
+            } else {
+              reply += mockLinksHtml;
+            }
+          } catch (e) {
+            console.error('[OliveBot] Tool call parse error:', e);
+          }
+        }
+      }
+    }
+
+    if (!reply) reply = 'Sorry, I could not get a response. Please try again.';
+    removeTyping();
+    appendBotMessage(reply);
+    conversationHistory.push({ role: 'assistant', content: reply });
+  } catch(err) {
+    removeTyping();
+    appendBotMessage(`⚠️ Error: ${err.message}. Please check your API key and try again.`, true);
+    console.error('OpenAI API error:', err);
+  }
+
+  isWaiting = false;
+  document.getElementById('send-btn').disabled = false;
+}
+
+function quickPrompt(text) {
+  if (!mockData) { appendBotMessage('⚠️ Please upload your mock test JSON first.', true); return; }
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+// ── Input auto-resize + enter to send ─────────────────────
+const chatInput = document.getElementById('chat-input');
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+chatInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+});
+</script>
+</body>
+</html>
