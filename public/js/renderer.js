@@ -193,41 +193,29 @@ function renderMockLinkBlocks(html) {
 /* ── Markdown Tables ─────────────────────────────────────── */
 
 function renderMarkdownTables(html) {
-  // A robust generic markdown table regex
-  // Matches optionally leading/trailing space, header row, separator row, and body rows.
-  // It searches for blocks of text where lines are separated by pipe characters.
-  const tableRegex = /(?:^|\n)([^\n]+\|.*)\n(?:[\|\-\:\s]+)\n((?:[^\n]+\|.*(?:\n|$))+)/g;
-
-  return html.replace(tableRegex, (match, headerRow, bodyRows) => {
-    try {
-      const parseRow = (rowStr) => {
-        // split by pipe and clean up leading/trailing empty strings
-        let cells = rowStr.split('|').map(c => c.trim());
-        if (cells[0] === '') cells.shift();
-        if (cells[cells.length - 1] === '') cells.pop();
-        return cells;
-      };
-
-      const headers = parseRow(headerRow)
-        .map(c => `<th>${c}</th>`)
+  return html.replace(
+    /(?:^|\n)(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)+)/g,
+    (_match, headerRow, _sepRow, bodyRows) => {
+      const headers = headerRow
+        .split('|')
+        .filter(c => c.trim())
+        .map(c => `<th>${c.trim()}</th>`)
         .join('');
-
       const rows = bodyRows
         .trim()
         .split('\n')
-        .filter(r => r.trim() && r.includes('|')) // make sure it's a valid row
         .map(row => {
-          const cells = parseRow(row).map(c => `<td>${c}</td>`).join('');
+          const cells = row
+            .split('|')
+            .filter(c => c.trim())
+            .map(c => `<td>${c.trim()}</td>`)
+            .join('');
           return `<tr>${cells}</tr>`;
         })
         .join('');
-
-      return `<div class="table-container">\n<table>\n<thead>\n<tr>${headers}</tr>\n</thead>\n<tbody>\n${rows}\n</tbody>\n</table>\n</div>`;
-    } catch (e) {
-      console.error("Table parsing error", e, match);
-      return match; // return original text if parsing fails
+      return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     }
-  });
+  );
 }
 
 /* ── Markdown Formatting ─────────────────────────────────── */
