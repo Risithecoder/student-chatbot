@@ -1,13 +1,15 @@
 /**
  * OliveBot — Application Entry Point
- * Wires together all modules: sidebar, chat, stats engine, and prompt builder.
+ * Wires together all modules: sidebar, chat, stats engine, prompt builder, and quiz.
  * Handles global event listeners and intent filtering.
  */
 
 import { preComputeStats } from './stats-engine.js';
 import { buildSystemPrompt } from './prompt-builder.js';
-import { sendChatMessage, resetConversation, displayBotMessage, displayRejection, displayUserBubble, isBusy } from './chat.js';
+import { sendChatMessage, sendSilentMessage, resetConversation, displayBotMessage, displayRejection, displayUserBubble, isBusy, setMockRecommendationFn } from './chat.js';
 import { initFileUpload, populateSidebar, buildWelcomeMessage } from './sidebar.js';
+import { initQuiz, startQuiz, onQuizComplete } from './quiz.js';
+import { getRecommendedMocks } from './mock-catalog.js';
 
 /* ── State ───────────────────────────────────────────────── */
 
@@ -39,13 +41,11 @@ async function handleSend() {
   const text = input.value.trim();
   if (!text || isBusy()) return;
 
-  // Guard: no data loaded
   if (!mockData) {
     displayBotMessage('⚠️ Please upload your mock test JSON file first using the panel on the left.');
     return;
   }
 
-  // Guard: out of scope
   if (isOutOfScope(text)) {
     displayUserBubble(text);
     input.value = '';
@@ -76,27 +76,119 @@ function handleQuickPrompt(text) {
 /* ── File Load Handler ───────────────────────────────────── */
 
 function handleFileLoaded(data) {
-  mockData = data;
-  preComputedStats = preComputeStats(data);
+  try {
+    mockData = data;
+    preComputedStats = preComputeStats(data);
+    populateSidebar(data, preComputedStats);
+    document.getElementById('welcome-screen').style.display = 'none';
+    resetConversation();
 
-  populateSidebar(data, preComputedStats);
-  document.getElementById('welcome-screen').style.display = 'none';
-  resetConversation();
+    // Register mock recommendation fallback so chat.js can append cards
+    setMockRecommendationFn(() => getRecommendedMocks(preComputedStats, 2));
 
-  const welcomeMsg = buildWelcomeMessage(data, preComputedStats);
-  displayBotMessage(welcomeMsg);
+    const welcomeMsg = buildWelcomeMessage(data, preComputedStats);
+    displayBotMessage(welcomeMsg);
+  } catch (err) {
+    console.error('[OliveBot] File load error:', err);
+    displayBotMessage(`❌ Error loading data: ${err.message}. Please check your JSON file matches the expected format.`);
+  }
+}
+
+/* ── Quiz Complete Handler ───────────────────────────────── */
+
+async function handleQuizComplete(result) {
+  if (!result || !mockData) return;
+
+  const { mockName, difficulty, total, correct, wrong, questions, timeTaken } = result;
+  const accuracy = Math.round((correct / total) * 100);
+  const negMarks = (wrong * 0.25).toFixed(2);
+  const netScore = (correct - wrong * 0.25).toFixed(1);
+  const totalSec = Math.round(timeTaken / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = String(totalSec % 60).padStart(2, '0');
+
+  // Build per-topic breakdown with historical comparison
+  const topicMap = {};
+  for (const q of questions) {
+    if (!topicMap[q.topic]) topicMap[q.topic] = { correct: 0, total: 0 };
+    topicMap[q.topic].total++;
+    if (q.is_correct) topicMap[q.topic].correct++;
+  }
+
+  // Compare quiz topics against historical stats
+  const ta = preComputedStats.topic_analysis || {};
+  const sa = preComputedStats.section_analysis || {};
+  const topicRows = Object.entries(topicMap)
+    .map(([topic, d]) => {
+      const quizAcc = Math.round((d.correct / d.total) * 100);
+      // Find historical accuracy for this topic
+      let histAcc = null;
+      if (ta[topic] && typeof ta[topic].accuracy === 'number') {
+        histAcc = Math.round(ta[topic].accuracy);
+      } else if (sa[topic] && typeof sa[topic].avg_accuracy === 'number') {
+        histAcc = Math.round(sa[topic].avg_accuracy);
+      }
+      const histCol = histAcc !== null ? `${histAcc}%` : 'N/A';
+      const delta = histAcc !== null ? `${quizAcc >= histAcc ? '+' : ''}${quizAcc - histAcc}%` : '—';
+      return `| ${topic} | ${d.correct}/${d.total} | ${quizAcc}% | ${histCol} | ${delta} |`;
+    })
+    .join('\n');
+
+  // Identify strongest and weakest topics from this quiz
+  const topicAccuracies = Object.entries(topicMap).map(([topic, d]) => ({
+    topic,
+    accuracy: Math.round((d.correct / d.total) * 100),
+  }));
+  topicAccuracies.sort((a, b) => a.accuracy - b.accuracy);
+  const weakest = topicAccuracies.filter(t => t.accuracy < 60);
+  const strongest = topicAccuracies.filter(t => t.accuracy >= 70);
+
+  const weakSummary = weakest.length > 0
+    ? weakest.map(t => `${t.topic} (${t.accuracy}%)`).join(', ')
+    : 'none — all topics above 60%';
+  const strongSummary = strongest.length > 0
+    ? strongest.map(t => `${t.topic} (${t.accuracy}%)`).join(', ')
+    : 'none above 70%';
+
+  // Overall stats context
+  const s = preComputedStats.summary;
+
+  const quizSummary =
+`I just completed the mini mock **${mockName}** (${difficulty}, ${total} questions) in ${min}:${sec}.
+
+**My quiz results:**
+- Accuracy: ${accuracy}% | Correct: ${correct}/${total} | Wrong: ${wrong} | Negative Marks: -${negMarks} | Net Score: ${netScore}
+
+**Topic breakdown (quiz vs my historical performance):**
+| Topic | Quiz Score | Quiz Acc | Historical Acc | Change |
+|---|---|---|---|---|
+${topicRows}
+
+**Where I struggled:** ${weakSummary}
+**Where I did well:** ${strongSummary}
+
+**My overall profile for context:**
+- Average score across ${s.total_mocks} mocks: ${s.avg_score} | Average percentile: ${s.avg_percentile}%
+- Improvement so far: ${s.improvement_points > 0 ? '+' : ''}${s.improvement_points} points
+
+Based on this quiz result AND my overall mock history, please give me a personalized analysis:
+1. **Where I stand right now** — compare my quiz accuracy against exam cutoff requirements. Am I on track or behind? Be honest and specific with numbers.
+2. **What went wrong** — for each topic where I scored below 60%, tell me exactly what concept or pattern I'm likely struggling with and give me 2-3 concrete actions (not generic "practice more")
+3. **What went right** — acknowledge my strong topics briefly
+4. **What to do next** — give me a specific 3-day action plan based on my weaknesses from this quiz
+5. **Next mock recommendation** — ONLY if there's a mock in the catalog that directly targets my weak topics from this quiz, recommend it using MOCK_LINK. If no mock matches my specific weaknesses, don't recommend any — just tell me what topics to focus on independently.`;
+
+  const systemPrompt = buildSystemPrompt(mockData, preComputedStats);
+  await sendSilentMessage(quizSummary, systemPrompt);
 }
 
 /* ── Initialisation ──────────────────────────────────────── */
 
 function init() {
-  // File upload
-  initFileUpload(handleFileLoaded);
+  initFileUpload(handleFileLoaded, (msg) => displayBotMessage(msg));
 
-  // Send button
   document.getElementById('send-btn').addEventListener('click', handleSend);
 
-  // Enter to send (Shift+Enter for new line)
   const chatInput = document.getElementById('chat-input');
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -105,15 +197,18 @@ function init() {
     }
   });
 
-  // Auto-resize textarea
   chatInput.addEventListener('input', function () {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 140) + 'px';
   });
 
-  // Quick prompt buttons — expose handler globally for onclick attributes
+  // Quiz system
+  initQuiz();
+  onQuizComplete(handleQuizComplete);
+
+  // Expose globals for HTML onclick attributes
   window.quickPrompt = handleQuickPrompt;
+  window.startQuiz = startQuiz;
 }
 
-// Run on DOM ready
 document.addEventListener('DOMContentLoaded', init);

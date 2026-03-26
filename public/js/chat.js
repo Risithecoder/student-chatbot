@@ -10,6 +10,15 @@ import { renderMessage } from './renderer.js';
 
 let conversationHistory = [];
 let isWaiting = false;
+let mockRecommendationFn = null;
+
+/**
+ * Register a function that returns MOCK_LINK tags based on current stats.
+ * Called by app.js so chat.js can append recs when AI doesn't include them.
+ */
+export function setMockRecommendationFn(fn) {
+  mockRecommendationFn = fn;
+}
 
 /* ── Public API ──────────────────────────────────────────── */
 
@@ -37,26 +46,12 @@ export async function sendChatMessage(text, systemPrompt) {
   showTypingIndicator();
 
   try {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: systemPrompt,
-        messages: conversationHistory,
-      }),
-    });
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Server returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const reply = data.content || 'Sorry, I could not generate a response. Please try again.';
+    const reply = await callApi(systemPrompt);
+    const finalReply = appendMockFallback(reply);
 
     removeTypingIndicator();
-    appendBotMessage(reply);
-    conversationHistory.push({ role: 'assistant', content: reply });
+    appendBotMessage(finalReply);
+    conversationHistory.push({ role: 'assistant', content: finalReply });
   } catch (err) {
     removeTypingIndicator();
     appendBotMessage(`⚠️ Error: ${err.message}`, true);
@@ -92,11 +87,83 @@ export function displayUserBubble(text) {
 }
 
 /**
+ * Send a message silently (no user bubble shown in UI).
+ * Used after quiz completion to inject results into conversation context.
+ * @param {string} content      - Message content (not shown in UI)
+ * @param {string} systemPrompt - Full system prompt with student context
+ * @returns {Promise<void>}
+ */
+export async function sendSilentMessage(content, systemPrompt) {
+  if (isWaiting) return;
+
+  conversationHistory.push({ role: 'user', content });
+
+  isWaiting = true;
+  setSendButtonState(true);
+  showTypingIndicator();
+
+  try {
+    const reply = await callApi(systemPrompt);
+    const finalReply = appendMockFallback(reply);
+
+    removeTypingIndicator();
+    appendBotMessage(finalReply);
+    conversationHistory.push({ role: 'assistant', content: finalReply });
+  } catch (err) {
+    removeTypingIndicator();
+    appendBotMessage(`⚠️ Error: ${err.message}`, true);
+    console.error('[OliveBot] API error:', err);
+  }
+
+  isWaiting = false;
+  setSendButtonState(false);
+}
+
+/**
  * Check if a message send is currently in progress.
  * @returns {boolean}
  */
 export function isBusy() {
   return isWaiting;
+}
+
+/* ── API Call ────────────────────────────────────────────── */
+
+async function callApi(systemPrompt) {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system: systemPrompt,
+      messages: conversationHistory,
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || `Server returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.content || 'Sorry, I could not generate a response. Please try again.';
+}
+
+/* ── Mock Recommendation Fallback ────────────────────────── */
+
+/**
+ * If the AI response doesn't contain any MOCK_LINK tags,
+ * append programmatic recommendations from the catalog.
+ */
+function appendMockFallback(reply) {
+  if (!mockRecommendationFn) return reply;
+
+  // Check if AI already included MOCK_LINK tags
+  if (/<MOCK_LINK\s+/i.test(reply)) return reply;
+
+  const recs = mockRecommendationFn();
+  if (!recs) return reply;
+
+  return reply + '\n\n---\n\n### Recommended Practice Mocks\n\n' + recs;
 }
 
 /* ── DOM Manipulation ────────────────────────────────────── */

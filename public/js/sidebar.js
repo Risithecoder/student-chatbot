@@ -2,7 +2,10 @@
  * OliveBot — Sidebar Controller
  * Manages file upload, student info display, mini-stats,
  * score trend chart, and quick prompt buttons.
+ * Supports both Oliveboard raw format and custom schema.
  */
+
+import { detectFormat, validateAndNormalize, formatUsername, getExamName } from './data-adapter.js';
 
 /* ── State ───────────────────────────────────────────────── */
 
@@ -12,44 +15,79 @@ let sidebarChart = null;
 
 /**
  * Populate all sidebar sections with data from the parsed JSON and stats.
- * @param {Object} mockData - Parsed mock test JSON
+ * @param {Object} mockData - Parsed mock test JSON (either format)
  * @param {Object} stats    - Pre-computed stats from stats-engine.js
  */
 export function populateSidebar(mockData, stats) {
-  populateStudentCard(mockData);
+  populateStudentCard(mockData, stats);
   populateMiniStats(stats);
   populateScoreTrendChart(stats);
   showSidebarSections();
-  updateExamBadge(mockData.user.target_exam);
+
+  const format = mockData._format;
+  if (format === 'oliveboard') {
+    updateExamBadge(getExamName(mockData.coursename));
+  } else {
+    updateExamBadge(mockData.user.target_exam);
+  }
 }
 
 /**
  * Build the initial welcome message shown after data upload.
- * @param {Object} mockData - Parsed mock test JSON
+ * @param {Object} mockData - Parsed mock test JSON (either format)
  * @param {Object} stats    - Pre-computed stats
  * @returns {string}
  */
 export function buildWelcomeMessage(mockData, stats) {
   const s = stats.summary;
-  const firstName = mockData.user.name.split(' ')[0];
-  const daysLeft = getDaysLeft(mockData.user.exam_date);
-  const weakTopics = Object.entries(stats.topic_analysis)
+  const format = mockData._format;
+
+  let firstName, examName, totalMocks;
+  if (format === 'oliveboard') {
+    firstName = formatUsername(mockData.username).split(' ')[0];
+    examName = getExamName(mockData.coursename);
+    totalMocks = (mockData.results || []).length;
+  } else {
+    firstName = mockData.user.name.split(' ')[0];
+    examName = mockData.user.target_exam;
+    totalMocks = mockData.metadata.total_mocks_attempted;
+  }
+
+  // Find weak topics
+  const ta = stats.topic_analysis || {};
+  const weakTopics = Object.entries(ta)
     .filter(([, v]) => v.accuracy < 60)
     .map(([k]) => k);
+
+  // Section analysis for Oliveboard format
+  const sa = stats.section_analysis || {};
+  const weakSections = Object.entries(sa)
+    .filter(([, v]) => v.avg_accuracy !== 'N/A' && v.avg_accuracy < 60)
+    .map(([k]) => k);
+  const allWeak = [...new Set([...weakTopics, ...weakSections])];
 
   const pctColor = s.avg_percentile >= 70 ? 'green' : s.avg_percentile >= 60 ? 'amber' : 'red';
   const impColor = s.improvement_points > 0 ? 'green' : 'red';
   const impSign = s.improvement_points > 0 ? '+' : '';
 
-  return `<STATS items='[{"val":"${s.avg_score}","label":"Avg Score","color":"olive"},{"val":"${s.avg_percentile}%","label":"Avg Percentile","color":"${pctColor}"},{"val":"${impSign}${s.improvement_points}","label":"Improvement","color":"${impColor}"},{"val":"${daysLeft}","label":"Days Left","color":"amber"}]'/>
+  // For Oliveboard, show "Mocks Taken" instead of "Days Left"
+  let fourthStat;
+  if (format === 'oliveboard') {
+    fourthStat = `{"val":"${totalMocks}","label":"Mocks Taken","color":"olive"}`;
+  } else {
+    const daysLeft = getDaysLeft(mockData.user.exam_date);
+    fourthStat = `{"val":"${daysLeft}","label":"Days Left","color":"amber"}`;
+  }
 
-Hey **${firstName}!** 👋 I've loaded your **${mockData.metadata.total_mocks_attempted} mock tests** for **${mockData.user.target_exam}**.
+  return `<STATS items='[{"val":"${s.avg_score}","label":"Avg Score","color":"olive"},{"val":"${s.avg_percentile}%","label":"Avg Percentile","color":"${pctColor}"},{"val":"${impSign}${s.improvement_points}","label":"Improvement","color":"${impColor}"},${fourthStat}]'/>
+
+Hey **${firstName}!** 👋 I've loaded your **${totalMocks} mock tests** for **${examName}**.
 
 Here's your instant snapshot:
 
 - 📈 You've improved by **${impSign}${s.improvement_points} points** from Mock 1 to Mock ${s.total_mocks}
 - 🎯 Your average percentile is **${s.avg_percentile}%** — ${s.avg_percentile >= 70 ? '✅ on track for the cutoff' : '⚠️ needs to reach 70%+ for most banking exams'}
-- 🔴 Focus areas: **${weakTopics.length > 0 ? weakTopics.join(', ') : 'looking good across the board!'}**
+- 🔴 Focus areas: **${allWeak.length > 0 ? allWeak.slice(0, 5).join(', ') : 'looking good across the board!'}**
 
 What would you like to dive into? Use the quick prompts on the left, or ask me anything.`;
 }
@@ -91,12 +129,17 @@ function readJsonFile(file, callback) {
   reader.onload = (event) => {
     try {
       const data = JSON.parse(event.target.result);
-      if (!data.user || !data.mock_tests || !data.metadata) {
-        alert('Invalid JSON structure. File must contain "user", "metadata", and "mock_tests".');
+      const normalized = validateAndNormalize(data);
+      if (!normalized) {
+        alert(
+          'Invalid JSON structure. File must contain either:\n' +
+          '• Oliveboard format: "username", "results", "coursename"\n' +
+          '• Custom format: "user", "metadata", "mock_tests"'
+        );
         return;
       }
       document.getElementById('upload-status').style.display = 'block';
-      callback(data);
+      callback(normalized);
     } catch (err) {
       alert('Failed to parse JSON: ' + err.message);
     }
@@ -104,12 +147,22 @@ function readJsonFile(file, callback) {
   reader.readAsText(file);
 }
 
-function populateStudentCard(data) {
-  const daysLeft = getDaysLeft(data.user.exam_date);
-  document.getElementById('s-name').textContent = data.user.name;
-  document.getElementById('s-exam').textContent = data.user.target_exam;
-  document.getElementById('s-mocks').textContent = `${data.metadata.total_mocks_attempted} mocks`;
-  document.getElementById('s-days').textContent = daysLeft > 0 ? `${daysLeft}d left` : 'Exam passed';
+function populateStudentCard(data, stats) {
+  const format = data._format;
+  if (format === 'oliveboard') {
+    const displayName = formatUsername(data.username);
+    const examName = getExamName(data.coursename);
+    document.getElementById('s-name').textContent = displayName;
+    document.getElementById('s-exam').textContent = examName;
+    document.getElementById('s-mocks').textContent = `${(data.results || []).length} mocks`;
+    document.getElementById('s-days').textContent = `${(data.results || []).length} tests`;
+  } else {
+    const daysLeft = getDaysLeft(data.user.exam_date);
+    document.getElementById('s-name').textContent = data.user.name;
+    document.getElementById('s-exam').textContent = data.user.target_exam;
+    document.getElementById('s-mocks').textContent = `${data.metadata.total_mocks_attempted} mocks`;
+    document.getElementById('s-days').textContent = daysLeft > 0 ? `${daysLeft}d left` : 'Exam passed';
+  }
 }
 
 function populateMiniStats(stats) {
@@ -130,7 +183,7 @@ function populateMiniStats(stats) {
   // Percentile trend badge
   const pctTrendEl = document.getElementById('pct-trend');
   const pcts = stats.score_progression.map(p => p.percentile);
-  const pctDiff = (pcts[pcts.length - 1] - pcts[0]).toFixed(1);
+  const pctDiff = pcts.length >= 2 ? (pcts[pcts.length - 1] - pcts[0]).toFixed(1) : '0';
   const pctPositive = pctDiff > 0;
   pctTrendEl.textContent = pctPositive ? `📈 +${pctDiff}%` : `📉 ${pctDiff}%`;
   pctTrendEl.className = 'mini-stat-trend ' + (pctPositive ? 'trend-up' : 'trend-dn');
@@ -194,5 +247,6 @@ function updateExamBadge(examName) {
 }
 
 function getDaysLeft(examDateStr) {
+  if (!examDateStr) return 0;
   return Math.ceil((new Date(examDateStr) - new Date()) / 86400000);
 }

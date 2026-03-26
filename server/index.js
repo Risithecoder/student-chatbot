@@ -37,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: MODEL,
-      max_tokens: 2000,
+      max_tokens: 3500,
       temperature: 0.7,
       messages: [
         { role: 'system', content: system },

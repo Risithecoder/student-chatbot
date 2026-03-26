@@ -164,6 +164,46 @@
 
 </div>
 
+<!-- ═══ Quiz Overlay ═══ -->
+<div id="quiz-overlay" class="quiz-overlay quiz-hidden" role="dialog" aria-modal="true" aria-labelledby="quiz-mock-name">
+  <div class="quiz-modal">
+
+    <!-- Header -->
+    <div class="quiz-header">
+      <div class="quiz-header-info">
+        <div class="quiz-mock-name" id="quiz-mock-name">Loading…</div>
+        <div class="quiz-meta">
+          <span class="quiz-badge" id="quiz-difficulty">Medium</span>
+          <span class="quiz-badge quiz-badge-track" id="quiz-track">Banking</span>
+        </div>
+      </div>
+      <button class="quiz-close-btn" id="quiz-close-btn" title="Close quiz">&#x2715;</button>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="quiz-progress-wrap">
+      <div class="quiz-progress-bar" id="quiz-progress-bar"></div>
+    </div>
+
+    <!-- Body -->
+    <div class="quiz-body">
+      <div class="quiz-q-counter" id="quiz-q-num">Question 1 of 10</div>
+      <div class="quiz-topic-label" id="quiz-topic-label">Topic · Subtopic</div>
+      <div class="quiz-question" id="quiz-question-text">Loading question…</div>
+      <div class="quiz-options" id="quiz-options">
+        <!-- Options rendered by quiz.js -->
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="quiz-footer">
+      <div class="quiz-live-score" id="quiz-live-score">Score: 0/0</div>
+      <div class="quiz-auto-label">Auto-solving…</div>
+    </div>
+
+  </div>
+</div>
+
 <!-- App Entry Point -->
 <script type="module" src="/js/app.js"></script>
 

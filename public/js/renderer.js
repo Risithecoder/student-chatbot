@@ -15,6 +15,7 @@ export function renderMessage(raw) {
   html = renderStatBlocks(html);
   html = renderChartBlocks(html);
   html = renderRoadmapBlocks(html);
+  html = renderMockLinkBlocks(html);
   html = renderMarkdownTables(html);
   html = renderMarkdown(html);
 
@@ -149,32 +150,84 @@ function renderRoadmapBlocks(html) {
   });
 }
 
+/* ── MOCK_LINK Block ─────────────────────────────────────── */
+
+function renderMockLinkBlocks(html) {
+  // Flexible regex: matches <MOCK_LINK ... /> with attributes in ANY order
+  return html.replace(
+    /<MOCK_LINK\s+([^>]*?)\/>/g,
+    (_, attrs) => {
+      const get = (key) => {
+        const m = attrs.match(new RegExp(`${key}\\s*=\\s*"([^"]*?)"`));
+        return m ? m[1] : '';
+      };
+      const id = get('id');
+      const name = get('name');
+      const difficulty = get('difficulty') || 'Medium';
+      const questions = get('questions') || '10';
+      const topics = get('topics') || '';
+      const reason = get('reason') || 'Recommended based on your performance data';
+
+      if (!id && !name) return '';
+
+      const diffClass =
+        difficulty === 'Hard' ? 'diff-hard' : difficulty === 'Easy' ? 'diff-easy' : 'diff-medium';
+      const quizId = id || name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      return `
+        <div class="mock-rec-card" onclick="window.startQuiz('${quizId}')">
+          <div class="mock-rec-header">
+            <div class="mock-rec-name">${name || id}</div>
+            <span class="mock-rec-diff ${diffClass}">${difficulty}</span>
+          </div>
+          ${topics ? `<div class="mock-rec-topics">📚 ${topics}</div>` : ''}
+          <div class="mock-rec-reason">💡 ${reason}</div>
+          <div class="mock-rec-footer">
+            <span class="mock-rec-count">🎯 ${questions} questions</span>
+            <button class="mock-rec-btn">Start Mini Quiz →</button>
+          </div>
+        </div>`;
+    }
+  );
+}
+
 /* ── Markdown Tables ─────────────────────────────────────── */
 
 function renderMarkdownTables(html) {
-  return html.replace(
-    /(?:^|\n)(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)+)/g,
-    (_match, headerRow, _sepRow, bodyRows) => {
-      const headers = headerRow
-        .split('|')
-        .filter(c => c.trim())
-        .map(c => `<th>${c.trim()}</th>`)
+  // A robust generic markdown table regex
+  // Matches optionally leading/trailing space, header row, separator row, and body rows.
+  // It searches for blocks of text where lines are separated by pipe characters.
+  const tableRegex = /(?:^|\n)([^\n]+\|.*)\n(?:[\|\-\:\s]+)\n((?:[^\n]+\|.*(?:\n|$))+)/g;
+
+  return html.replace(tableRegex, (match, headerRow, bodyRows) => {
+    try {
+      const parseRow = (rowStr) => {
+        // split by pipe and clean up leading/trailing empty strings
+        let cells = rowStr.split('|').map(c => c.trim());
+        if (cells[0] === '') cells.shift();
+        if (cells[cells.length - 1] === '') cells.pop();
+        return cells;
+      };
+
+      const headers = parseRow(headerRow)
+        .map(c => `<th>${c}</th>`)
         .join('');
+
       const rows = bodyRows
         .trim()
         .split('\n')
+        .filter(r => r.trim() && r.includes('|')) // make sure it's a valid row
         .map(row => {
-          const cells = row
-            .split('|')
-            .filter(c => c.trim())
-            .map(c => `<td>${c.trim()}</td>`)
-            .join('');
+          const cells = parseRow(row).map(c => `<td>${c}</td>`).join('');
           return `<tr>${cells}</tr>`;
         })
         .join('');
-      return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+
+      return `<div class="table-container">\n<table>\n<thead>\n<tr>${headers}</tr>\n</thead>\n<tbody>\n${rows}\n</tbody>\n</table>\n</div>`;
+    } catch (e) {
+      console.error("Table parsing error", e, match);
+      return match; // return original text if parsing fails
     }
-  );
+  });
 }
 
 /* ── Markdown Formatting ─────────────────────────────────── */
