@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: olivebot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: OPENAI_API_KEY
+        sync: false # User must provide this in Render dashboard
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: NODE_VERSION
+        value: 18.0.0
