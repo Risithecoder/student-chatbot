@@ -1,0 +1,4 @@
+.env
+.DS_Store
+.claude
+ mock_test_data.json
